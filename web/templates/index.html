@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Hospital Network — SDN Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --urllc:   #ff3b30;
+    --miot:    #00c7a3;
+    --embb:    #5856d6;
+    --cyan:    #00d4ff;
+    --navy:    #0a1628;
+    --card-bg: #ffffff;
+    --bg:      #eef2f7;
+    --text:    #1a2340;
+    --muted:   #6b7a9a;
+    --ok:      #28c76f;
+    --fail:    #ea5455;
+    --border:  #dde3f0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+
+  /* ── Header ─────────────────────────────────────────── */
+  header {
+    background: var(--navy);
+    color: #fff;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 3px solid var(--cyan);
+  }
+  header .title h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: .5px; }
+  header .title h1 span { color: var(--cyan); }
+  header .title p { font-size: .78rem; color: #a0aec0; margin-top: 2px; }
+  header .meta { text-align: right; font-size: .78rem; color: #a0aec0; line-height: 1.7; }
+  header .meta strong { color: #fff; }
+
+  /* ── Phase bar ───────────────────────────────────────── */
+  .phase-bar {
+    background: #111d35;
+    padding: 9px 24px;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    font-size: .82rem;
+    border-bottom: 1px solid #1e3255;
+  }
+  .phase-bar .label { color: #a0aec0; }
+  .phase-bar .val { color: #fff; font-weight: 600; }
+  .phase-badge {
+    padding: 3px 12px; border-radius: 20px; font-weight: 700; font-size: .75rem;
+    letter-spacing: .5px; text-transform: uppercase;
+  }
+  .phase-badge.normal   { background: #163a22; color: var(--ok); }
+  .phase-badge.moderate { background: #3a2e10; color: #f6c90e; }
+  .phase-badge.heavy    { background: #3a1010; color: var(--fail); }
+  .phase-badge.recovery { background: #10273a; color: var(--cyan); }
+  .cong-bar-wrap { flex: 1; height: 6px; background: #1e3255; border-radius: 3px; max-width: 180px; }
+  .cong-bar { height: 100%; border-radius: 3px; transition: width .4s, background .4s; }
+
+  /* ── Main layout ─────────────────────────────────────── */
+  main { padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; }
+
+  /* ── Slice cards ─────────────────────────────────────── */
+  .slices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .slice-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    border-top: 4px solid var(--border);
+    padding: 16px 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  }
+  .slice-card.urllc { border-top-color: var(--urllc); }
+  .slice-card.miot  { border-top-color: var(--miot);  }
+  .slice-card.embb  { border-top-color: var(--embb);  }
+
+  .slice-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .slice-letter {
+    width: 34px; height: 34px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 1rem; color: #fff;
+    flex-shrink: 0;
+  }
+  .urllc .slice-letter { background: var(--urllc); }
+  .miot  .slice-letter { background: var(--miot);  }
+  .embb  .slice-letter { background: var(--embb);  }
+
+  .slice-title h2 { font-size: .95rem; font-weight: 700; }
+  .slice-title p  { font-size: .72rem; color: var(--muted); margin-top: 1px; }
+
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .kpi-item { background: #f6f8fc; border-radius: 8px; padding: 8px 10px; }
+  .kpi-item .kpi-label { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+  .kpi-item .kpi-value { font-size: 1.1rem; font-weight: 700; margin: 2px 0; }
+  .kpi-item .kpi-target { font-size: .68rem; color: var(--muted); }
+  .kpi-item.full { grid-column: span 2; }
+
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 20px; font-weight: 700; font-size: .78rem;
+    margin-top: 10px; width: 100%; justify-content: center;
+  }
+  .status-pill.ok   { background: #e8f9ef; color: var(--ok); }
+  .status-pill.fail { background: #fde8e8; color: var(--fail); }
+  .status-pill::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .ok-text   { color: var(--ok);   font-weight: 700; }
+  .fail-text { color: var(--fail); font-weight: 700; }
+
+  /* ── Chart ───────────────────────────────────────────── */
+  .chart-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 18px 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  }
+  .card-title {
+    font-size: .9rem; font-weight: 700; color: var(--text);
+    margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .card-title span { color: var(--muted); font-weight: 400; font-size: .78rem; }
+  .chart-wrap { height: 220px; position: relative; }
+
+  /* ── Bottom grid ─────────────────────────────────────── */
+  .bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  .table-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  }
+  .data-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+  .data-table th {
+    text-align: left; padding: 6px 8px;
+    color: var(--muted); font-weight: 600; font-size: .7rem; text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  .data-table td { padding: 6px 8px; border-bottom: 1px solid #f0f3f8; }
+  .data-table tr:last-child td { border-bottom: none; }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: .68rem; font-weight: 700;
+  }
+  .badge.urllc { background: #ffe5e3; color: var(--urllc); }
+  .badge.miot  { background: #e0faf4; color: #00977a; }
+  .badge.embb  { background: #edeaff; color: var(--embb); }
+
+  /* ── Event log ───────────────────────────────────────── */
+  .events-card {
+    background: #0d1b2e;
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    display: flex; flex-direction: column;
+  }
+  .events-card .card-title { color: #c8d6ea; }
+  .events-card .card-title span { color: #5a7095; }
+  #events-log {
+    flex: 1; overflow-y: auto; max-height: 240px;
+    font-family: 'Courier New', monospace; font-size: .72rem; line-height: 1.7;
+  }
+  .ev-urllc { color: #ff7a72; }
+  .ev-miot  { color: #00e5bf; }
+  .ev-embb  { color: #9a98ff; }
+  .ev-ctrl  { color: #f6c90e; }
+  .ev-breach{ color: #ff3b30; font-weight: 700; }
+
+  /* ── Devices table ───────────────────────────────────── */
+  .devices-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  }
+
+  /* ── Footer ──────────────────────────────────────────── */
+  footer {
+    background: var(--navy); color: #5a7095;
+    text-align: center; padding: 10px;
+    font-size: .72rem; margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────── -->
+<header>
+  <div class="title">
+    <h1>SMART <span>HOSPITAL</span> NETWORK</h1>
+    <p>SDN-Based Network Slicing for Ultra-Reliable Low-Latency Healthcare Communication</p>
+  </div>
+  <div class="meta">
+    <div>212010020004 — Ayse Sumeyra Mert</div>
+    <div>212010020058 — Fatma Zehra Bestil</div>
+    <div>212010020113 — Betul Korkmaz</div>
+    <div style="margin-top:4px"><strong>NGN 2025 · KFAU-KGTU</strong></div>
+  </div>
+</header>
+
+<!-- ── Phase bar ─────────────────────────────────────────────────────── -->
+<div class="phase-bar">
+  <div>
+    <span class="label">Phase: </span>
+    <span id="phase-badge" class="phase-badge normal">NORMAL OPERATION</span>
+  </div>
+  <div>
+    <span class="label">Congestion: </span>
+    <span id="cong-pct" class="val">0%</span>
+    <div class="cong-bar-wrap" style="display:inline-block;vertical-align:middle;margin-left:8px">
+      <div id="cong-bar" class="cong-bar" style="width:0%;background:var(--ok)"></div>
+    </div>
+  </div>
+  <div>
+    <span class="label">Uptime: </span>
+    <span id="uptime" class="val">00:00</span>
+  </div>
+  <div>
+    <span class="label">Controller: </span>
+    <span class="val" style="color:var(--ok)">RYU SDN — OpenFlow 1.3 ●</span>
+  </div>
+  <div>
+    <span class="label">Switches: </span>
+    <span class="val">s0 (Core) · s1 · s2 · s3</span>
+  </div>
+</div>
+
+<main>
+
+  <!-- ── Slice cards ──────────────────────────────────────────────── -->
+  <div class="slices">
+
+    <div class="slice-card urllc" id="card-URLLC">
+      <div class="slice-header">
+        <div class="slice-letter">A</div>
+        <div class="slice-title">
+          <h2>URLLC — Slice A</h2>
+          <p>Ultra-Reliable Low-Latency · <strong>CRITICAL</strong> Priority</p>
+        </div>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi-item">
+          <div class="kpi-label">Avg Latency</div>
+          <div class="kpi-value" id="URLLC-lat">—</div>
+          <div class="kpi-target">Target: &lt;5 ms</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">P95 Latency</div>
+          <div class="kpi-value" id="URLLC-p95">—</div>
+          <div class="kpi-target">99th percentile</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">Jitter</div>
+          <div class="kpi-value" id="URLLC-jit">—</div>
+          <div class="kpi-target">Delay variation</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">Reliability</div>
+          <div class="kpi-value" id="URLLC-rel">—</div>
+          <div class="kpi-target">Target: 99.999%</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">Pkt Loss</div>
+          <div class="kpi-value" id="URLLC-loss">—</div>
+          <div class="kpi-target">dropped / sent</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">Throughput</div>
+          <div class="kpi-value" id="URLLC-tput" style="font-size:.9rem">—</div>
+          <div class="kpi-target">current window</div>
+        </div>
+        <div class="kpi-item full">
+          <div class="kpi-label">Packets</div>
+          <div style="font-size:.82rem;margin-top:3px">
+            Sent: <strong id="URLLC-sent">0</strong> &nbsp;|&nbsp;
+            Delivered: <strong id="URLLC-del">0</strong> &nbsp;|&nbsp;
+            Dropped: <strong id="URLLC-drop">0</strong>
+          </div>
+        </div>
+      </div>
+      <div id="URLLC-status" class="status-pill ok">ALL KPIs WITHIN TARGET</div>
+    </div>
+
+    <div class="slice-card miot" id="card-mIoT">
+      <div class="slice-header">
+        <div class="slice-letter">B</div>
+        <div class="slice-title">
+          <h2>mIoT — Slice B</h2>
+          <p>Massive Internet of Things · <strong>MEDIUM</strong> Priority</p>
+        </div>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi-item">
+          <div class="kpi-label">Avg Latency</div>
+          <div class="kpi-value" id="mIoT-lat">—</div>
+          <div class="kpi-target">Target: &lt;50 ms</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">P95 Latency</div>
+          <div class="kpi-value" id="mIoT-p95">—</div>
+          <div class="kpi-target">99th percentile</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">Jitter</div>
+          <div class="kpi-value" id="mIoT-jit">—</div>
+          <div class="kpi-target">Delay variation</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">Reliability</div>
+          <div class="kpi-value" id="mIoT-rel">—</div>
+          <div class="kpi-target">Target: 99.9%</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">Pkt Loss</div>
+          <div class="kpi-value" id="mIoT-loss">—</div>
+          <div class="kpi-target">dropped / sent</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">Throughput</div>
+          <div class="kpi-value" id="mIoT-tput" style="font-size:.9rem">—</div>
+          <div class="kpi-target">current window</div>
+        </div>
+        <div class="kpi-item full">
+          <div class="kpi-label">Packets</div>
+          <div style="font-size:.82rem;margin-top:3px">
+            Sent: <strong id="mIoT-sent">0</strong> &nbsp;|&nbsp;
+            Delivered: <strong id="mIoT-del">0</strong> &nbsp;|&nbsp;
+            Dropped: <strong id="mIoT-drop">0</strong>
+          </div>
+        </div>
+      </div>
+      <div id="mIoT-status" class="status-pill ok">ALL KPIs WITHIN TARGET</div>
+    </div>
+
+    <div class="slice-card embb" id="card-eMBB">
+      <div class="slice-header">
+        <div class="slice-letter">C</div>
+        <div class="slice-title">
+          <h2>eMBB — Slice C</h2>
+          <p>Enhanced Mobile Broadband · <strong>STANDARD</strong> Priority</p>
+        </div>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi-item">
+          <div class="kpi-label">Avg Latency</div>
+          <div class="kpi-value" id="eMBB-lat">—</div>
+          <div class="kpi-target">Target: &lt;100 ms</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">P95 Latency</div>
+          <div class="kpi-value" id="eMBB-p95">—</div>
+          <div class="kpi-target">99th percentile</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">Jitter</div>
+          <div class="kpi-value" id="eMBB-jit">—</div>
+          <div class="kpi-target">Delay variation</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">Reliability</div>
+          <div class="kpi-value" id="eMBB-rel">—</div>
+          <div class="kpi-target">Target: 99%</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">Pkt Loss</div>
+          <div class="kpi-value" id="eMBB-loss">—</div>
+          <div class="kpi-target">dropped / sent</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">Throughput</div>
+          <div class="kpi-value" id="eMBB-tput" style="font-size:.9rem">—</div>
+          <div class="kpi-target">current window</div>
+        </div>
+        <div class="kpi-item full">
+          <div class="kpi-label">Packets</div>
+          <div style="font-size:.82rem;margin-top:3px">
+            Sent: <strong id="eMBB-sent">0</strong> &nbsp;|&nbsp;
+            Delivered: <strong id="eMBB-del">0</strong> &nbsp;|&nbsp;
+            Dropped: <strong id="eMBB-drop">0</strong>
+          </div>
+        </div>
+      </div>
+      <div id="eMBB-status" class="status-pill ok">ALL KPIs WITHIN TARGET</div>
+    </div>
+
+  </div><!-- /slices -->
+
+  <!-- ── Live chart ────────────────────────────────────────────────── -->
+  <div class="chart-card">
+    <div class="card-title">
+      Live End-to-End Latency
+      <span>— last 60 seconds · dashed lines = KPI targets</span>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="latency-chart"></canvas>
+    </div>
+  </div>
+
+  <!-- ── Bottom row ────────────────────────────────────────────────── -->
+  <div class="bottom">
+
+    <!-- Flow table -->
+    <div class="table-card">
+      <div class="card-title" style="color:var(--text)">
+        SDN Flow Table
+        <span>— OpenFlow 1.3 · RYU Controller</span>
+      </div>
+      <table class="data-table" id="flow-table">
+        <thead>
+          <tr>
+            <th>Rule ID</th><th>Match Src</th><th>Priority</th>
+            <th>Slice</th><th>Queue</th><th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="flow-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Event log -->
+    <div class="events-card">
+      <div class="card-title">
+        Network Events
+        <span>— live packet log</span>
+      </div>
+      <div id="events-log"></div>
+    </div>
+
+  </div>
+
+</main>
+
+<footer>
+  Smart Hospital Network · SDN-Based Network Slicing · NGN 2025 · KFAU-KGTU &nbsp;·&nbsp;
+  Members: Ayse Sumeyra Mert · Fatma Zehra Bestil · Betul Korkmaz
+</footer>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart.js setup
+// ─────────────────────────────────────────────────────────────────────────────
+const LABELS = Array.from({length: 120}, (_, i) => i % 10 === 0 ? `-${(120-i)*0.5}s` : '');
+
+const chartData = {
+  labels: LABELS,
+  datasets: [
+    {
+      label: 'URLLC',
+      data: Array(120).fill(null),
+      borderColor: '#ff3b30', backgroundColor: 'rgba(255,59,48,.08)',
+      borderWidth: 2, pointRadius: 0, fill: true, tension: 0.3,
+    },
+    {
+      label: 'mIoT',
+      data: Array(120).fill(null),
+      borderColor: '#00c7a3', backgroundColor: 'rgba(0,199,163,.08)',
+      borderWidth: 2, pointRadius: 0, fill: true, tension: 0.3,
+    },
+    {
+      label: 'eMBB',
+      data: Array(120).fill(null),
+      borderColor: '#5856d6', backgroundColor: 'rgba(88,86,214,.08)',
+      borderWidth: 2, pointRadius: 0, fill: true, tension: 0.3,
+    },
+    // Target lines (dashed)
+    {
+      label: 'URLLC target (5ms)',
+      data: Array(120).fill(5),
+      borderColor: 'rgba(255,59,48,.4)', borderDash: [6,4],
+      borderWidth: 1, pointRadius: 0, fill: false,
+    },
+    {
+      label: 'mIoT target (50ms)',
+      data: Array(120).fill(50),
+      borderColor: 'rgba(0,199,163,.4)', borderDash: [6,4],
+      borderWidth: 1, pointRadius: 0, fill: false,
+    },
+    {
+      label: 'eMBB target (100ms)',
+      data: Array(120).fill(100),
+      borderColor: 'rgba(88,86,214,.4)', borderDash: [6,4],
+      borderWidth: 1, pointRadius: 0, fill: false,
+    },
+  ]
+};
+
+const chart = new Chart(document.getElementById('latency-chart').getContext('2d'), {
+  type: 'line',
+  data: chartData,
+  options: {
+    animation: false,
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: {
+        labels: {
+          filter: item => !item.text.includes('target'),
+          color: '#6b7a9a', font: {size: 11}
+        }
+      },
+      tooltip: { filter: item => !item.dataset.label.includes('target') }
+    },
+    scales: {
+      x: { ticks: {color:'#6b7a9a', font:{size:10}}, grid:{color:'#eef2f7'} },
+      y: {
+        min: 0, max: 150,
+        ticks: { color:'#6b7a9a', font:{size:10}, callback: v => v+'ms' },
+        grid: { color: '#eef2f7' },
+        title: { display: true, text: 'Latency (ms)', color: '#6b7a9a', font:{size:11} }
+      }
+    }
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function setEl(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+function setColor(id, ok) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = ok ? 'kpi-value ok-text' : 'kpi-value fail-text';
+}
+
+const SLICE_CHART_IDX = { URLLC: 0, mIoT: 1, eMBB: 2 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Update functions
+// ─────────────────────────────────────────────────────────────────────────────
+function updateHeader(d) {
+  setEl('uptime', d.uptime);
+  setEl('cong-pct', d.congestion + '%');
+  document.getElementById('cong-bar').style.width = d.congestion + '%';
+  const bar = document.getElementById('cong-bar');
+  bar.style.background = d.congestion < 30 ? 'var(--ok)' : d.congestion < 70 ? '#f6c90e' : 'var(--fail)';
+
+  const badge = document.getElementById('phase-badge');
+  badge.textContent = d.phase;
+  badge.className = 'phase-badge';
+  if (d.phase.includes('NORMAL') || d.phase.includes('RECOVERY')) {
+    badge.classList.add(d.phase.includes('NORMAL') ? 'normal' : 'recovery');
+  } else if (d.phase.includes('HEAVY')) {
+    badge.classList.add('heavy');
+  } else {
+    badge.classList.add('moderate');
+  }
+}
+
+function updateSlices(slices) {
+  for (const [name, s] of Object.entries(slices)) {
+    const latOk = s.lat_ok;
+    const relOk = s.rel_ok;
+    const allOk = latOk && relOk;
+
+    const latVal = s.avg_latency > 0 ? s.avg_latency.toFixed(2) + ' ms' : '—';
+    setEl(`${name}-lat`, latVal);
+    document.getElementById(`${name}-lat`).className = `kpi-value ${latOk ? 'ok-text' : 'fail-text'}`;
+
+    setEl(`${name}-p95`,  s.p95_latency > 0 ? s.p95_latency.toFixed(2) + ' ms' : '—');
+    setEl(`${name}-jit`,  s.jitter > 0 ? s.jitter.toFixed(2) + ' ms' : '—');
+    setEl(`${name}-rel`,  s.reliability.toFixed(3) + '%');
+    document.getElementById(`${name}-rel`).className = `kpi-value ${relOk ? 'ok-text' : 'fail-text'}`;
+    setEl(`${name}-loss`, s.loss.toFixed(4) + '%');
+    setEl(`${name}-tput`, s.throughput);
+    setEl(`${name}-sent`, s.sent.toLocaleString());
+    setEl(`${name}-del`,  s.delivered.toLocaleString());
+    setEl(`${name}-drop`, s.dropped.toLocaleString());
+
+    const pill = document.getElementById(`${name}-status`);
+    pill.className = `status-pill ${allOk ? 'ok' : 'fail'}`;
+    pill.textContent = allOk ? 'ALL KPIs WITHIN TARGET' : 'KPI TARGET BREACHED';
+  }
+}
+
+function updateChart(history) {
+  for (const [name, vals] of Object.entries(history)) {
+    const idx = SLICE_CHART_IDX[name];
+    if (idx !== undefined) {
+      chart.data.datasets[idx].data = vals.map(v => v > 0 ? v : null);
+    }
+  }
+  chart.update('none');
+}
+
+function updateFlowTable(rules) {
+  const tb = document.getElementById('flow-tbody');
+  if (!tb || tb.children.length === rules.length) return; // already populated
+  tb.innerHTML = '';
+  for (const r of rules) {
+    const cls = r.slice.toLowerCase().replace('miot', 'miot');
+    const sliceCls = r.slice === 'URLLC' ? 'urllc' : r.slice === 'mIoT' ? 'miot' : 'embb';
+    tb.innerHTML += `
+      <tr>
+        <td>${r.rule_id}</td>
+        <td><code>${r.match}</code></td>
+        <td><strong>${r.priority}</strong></td>
+        <td><span class="badge ${sliceCls}">${r.slice}</span></td>
+        <td>Q${r.queue}</td>
+        <td style="color:var(--muted);font-size:.72rem">${r.action}</td>
+      </tr>`;
+  }
+}
+
+function updateEvents(events, ctrlEvents) {
+  const log = document.getElementById('events-log');
+  let html = '';
+  for (const ev of [...events].reverse()) {
+    let cls = 'ev-embb';
+    if (ev.includes('URLLC'))  cls = 'ev-urllc';
+    else if (ev.includes('mIoT')) cls = 'ev-miot';
+    if (ev.includes('BREACH')) cls = 'ev-breach';
+    html += `<div class="${cls}">${ev}</div>`;
+  }
+  for (const ev of ctrlEvents) {
+    html += `<div class="ev-ctrl">${ev}</div>`;
+  }
+  log.innerHTML = html;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main polling loop
+// ─────────────────────────────────────────────────────────────────────────────
+async function poll() {
+  try {
+    const res = await fetch('/api/status');
+    const d = await res.json();
+    updateHeader(d);
+    updateSlices(d.slices);
+    updateChart(d.history);
+    updateFlowTable(d.flow_table);
+    updateEvents(d.events, d.ctrl_events);
+  } catch (e) {
+    console.warn('Poll error:', e);
+  }
+}
+
+poll();
+setInterval(poll, 500);
+</script>
+</body>
+</html>

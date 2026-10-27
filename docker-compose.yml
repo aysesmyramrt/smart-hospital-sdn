@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  smart-hospital-mininet:
+    build:
+      context: ./mininet
+    container_name: smart_hospital_sdn
+    privileged: true        # Mininet için gerekli (network namespace)
+    network_mode: host      # OVS için host ağına erişim
+    stdin_open: true        # Mininet CLI için
+    tty: true
+    volumes:
+      - ./mininet:/app      # Kod değişikliklerini anında yansıt
